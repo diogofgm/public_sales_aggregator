@@ -2,12 +2,16 @@
 # -*- coding: utf-8 -*-
 
 import requests
+import time
 import re
 from bs4 import BeautifulSoup
 
 import sys
 
-BASE_URL = 'https://vendas.portaldasfinancas.gov.pt/bens/consultaVendasCurso.action'
+BASE_URL = 'https://vendas.portaldasfinancas.gov.pt/bens/'
+SALES_PAGE = 'consultaVendasCurso.action'
+# /detalheVenda.action?idVenda=14&sf=0019&ano=2022
+DETAILS_PAGE = 'detalheVenda.action'
 
 BASE_PARAMS = {
     'page': '1',
@@ -23,7 +27,8 @@ BASE_PARAMS = {
     'tipoBem': ''
 }
 
-MAX_PAGES = 5
+MAX_PAGES = 2
+SLEEP = 10
 
 def get_max_pages(url):
     PAGES = 50
@@ -35,21 +40,10 @@ def get_max_pages(url):
     pass
 
 
-def parse_details(details_url):
-    html_string = ''
-    details_markup = requests.get(details_url)
-    details_soup = BeautifulSoup(details_markup.content, 'html.parser')
-
-    details = details_soup.find_all('table',class_='w100')
-    for table in details:
-        #print(table)
-        html_string = html_string + table.encode('utf-8')
-    return html_string
-
-def parse_page(url,page):
+def parse_sales_main_page(url, page):
     
-    print "requesting url", url
-    print "requesting page", page
+    print ("requesting url", url)
+    print ("requesting page", page)
 
     params = {
         'page': page,
@@ -65,18 +59,41 @@ def parse_page(url,page):
         'tipoBem': ''
     }
 
-    markup = requests.get(BASE_URL, params=params)
+    markup = requests.get(url, params=params)
     soup = BeautifulSoup(markup.content, 'html.parser')
-    tabela = soup.find_all('td',class_='info-table-title')
+    items = soup.find_all('table',class_='w95')
+    html = '<table>'
+    for item in items:
+        for info in item.find_all('a',href=True, limit=1):
+            details_url = str('https://vendas.portaldasfinancas.gov.pt/bens/') + str(info['href'])
+            print("built details url", details_url)
+            if "consulta" not in details_url:
+                print(parse_details_page(details_url))
+                html = html + str(parse_details_page(details_url))
 
-    for linha in tabela:
-        for info in linha.find_all('a',href=True):
-            
-            details_url = 'https://vendas.portaldasfinancas.gov.pt/bens/'+info['href']
-            parse_details(details_url)
-                 
-    return parse_details(details_url)
+    html = html + '</table>'
+    return html
 
+
+def parse_details_page(url):
+
+    html = requests.get(url)
+    soup = BeautifulSoup(html.content, 'html.parser')
+
+    details_html = '<tr>'
+
+    details = '<td>' + str(soup.select("#trFotoP > th.top.left > span:nth-child(2)")[0].contents[0]) + '</td>'
+    details = details + '<td>' + str(soup.select("#trFotoP > th.top.left > span:nth-child(5)")[0].contents[0]) + '</td>'
+    details = details + '<td>' + str(soup.select("#trFotoP > th.top.left > span:nth-child(8)")[0].contents[0]) + '</td>'
+    details = details + '<td>' + str(soup.select("#trFotoP > th.top.left > span:nth-child(11)")[0].contents[0]) + '</td>'
+    details = details + '<td>' + str(soup.select("#trFotoP > th.top.left > span:nth-child(14)")[0].contents[0]) + '</td>'
+    details = details + '<td>' + str(soup.select("#trFotoP > th.top.left > span:nth-child(17)")[0].contents[0]) + '</td>'
+    details = details + '<td>' + str(soup.select("#dataTable > tbody > tr:nth-child(3) > td > table > tbody > tr > th")) + '</td>'
+    
+
+    details_html = details_html + details + '</tr>'
+
+    return details_html
 
 #
 # Main funtion
@@ -86,12 +103,19 @@ HTML_CLOSE = '</body></html>'
 
 HTML_STRING = HTML_OPEN
 
-for i in range(0,get_max_pages(BASE_URL)):
-    HTML_STRING = HTML_STRING + parse_page(BASE_URL,i)
+SALES_URL = BASE_URL + SALES_PAGE
 
+# DEBUG 
+'''
+HTML_STRING = HTML_STRING + parse_sales_main_page(SALES_URL,1)
+'''
+for i in range(1,get_max_pages(SALES_URL)):
+    HTML_STRING = HTML_STRING + parse_sales_main_page(SALES_URL,i)
+    time.sleep(SLEEP)
 HTML_STRING = HTML_STRING + HTML_CLOSE
 
 
-Html_file= open("testing.html","w")
-Html_file.write(HTML_STRING)
-Html_file.close()
+
+html_file = open("testing.html","w")
+html_file.write(HTML_STRING)
+html_file.close()
